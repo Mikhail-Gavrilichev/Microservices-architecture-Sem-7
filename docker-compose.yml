@@ -1,0 +1,79 @@
+name: tournament-management
+
+services:
+  task-db:
+    image: postgres:17-alpine
+    container_name: tournament-task-db
+    environment:
+      POSTGRES_DB: tasks
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - task-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tasks"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  review-db:
+    image: postgres:17-alpine
+    container_name: tournament-review-db
+    environment:
+      POSTGRES_DB: reviews
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - review-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d reviews"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  task-service:
+    build:
+      context: .
+      dockerfile: src/TaskService/Dockerfile
+    container_name: tournament-task-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: Host=task-db;Port=5432;Database=tasks;Username=postgres;Password=postgres
+      Database__ApplyMigrations: "true"
+    ports:
+      - "5101:8080"
+    depends_on:
+      task-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  review-service:
+    build:
+      context: .
+      dockerfile: src/ReviewService/Dockerfile
+    container_name: tournament-review-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: Host=review-db;Port=5432;Database=reviews;Username=postgres;Password=postgres
+      TaskService__BaseUrl: http://task-service:8080
+      Database__ApplyMigrations: "true"
+    ports:
+      - "5102:8080"
+    depends_on:
+      review-db:
+        condition: service_healthy
+      task-service:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  task-db-data:
+  review-db-data:

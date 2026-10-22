@@ -1,0 +1,40 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test results
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Local configuration and secrets
+appsettings.Development.local.json
+appsettings.Local.json
+*.env
+.env
+secrets/
+
+# Docker
+*.pidb
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log

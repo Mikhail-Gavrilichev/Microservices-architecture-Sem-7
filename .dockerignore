@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/TestResults/
+**/.vs/
+**/.vscode/
+**/.idea/
+.git/
+.gitignore
+.editorconfig
+README.md
+AGENTS.md
+docker-compose.yml
+tests/
+*.user
+*.suo
