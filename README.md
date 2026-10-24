@@ -8,6 +8,10 @@
 - **ReviewService** — агрегат **«Запрос на проверку»** (очередь проверок, назначение жюри,
   вердикт).
 
+Поверх API работает **Tournament Ops** — React SPA для сквозного сценария в браузере:
+подготовка и публикация задачи, создание запроса на проверку, работа с очередью,
+административные действия смотрителя и приватный кабинет жюри.
+
 Остальные агрегаты диаграммы («Турнир», «Игра», «Команда», «Решение», «Апелляция»,
 «Вопрос», «Итоги турнира», «Диплом», «Форма», «Участие в турнире», «Счёт игры»,
 «Набор форм») в рамках этой работы **не реализуются**.
@@ -22,6 +26,7 @@
 - [Структура репозитория](#структура-репозитория)
 - [Запуск через Docker Compose](#запуск-через-docker-compose)
 - [Локальный запуск](#локальный-запуск)
+- [Веб-интерфейс](#веб-интерфейс)
 - [API и сквозной сценарий](#api-и-сквозной-сценарий)
 - [Модели состояний](#модели-состояний)
 - [Ошибки](#ошибки)
@@ -41,6 +46,7 @@
 | Работа жюри | — | принять, отказаться, передать старшему, завершить с вердиктом |
 | Чтение | список с фильтрами, карточка, внутренний snapshot | список для смотрителя, очередь, проверки жюри |
 | Интеграция | отдаёт снимок опубликованной задачи | получает снимок по HTTP при создании запроса |
+| Веб-интерфейс | React SPA: список, черновик, публикация | React SPA: смотритель, очередь, кабинет жюри |
 | Инфраструктура | PostgreSQL, EF Core, Swagger, health checks, ProblemDetails | PostgreSQL, EF Core, Swagger, health checks, ProblemDetails |
 
 Дополнительно:
@@ -53,7 +59,10 @@
   в текущей итерации не выполняется);
 - xUnit-тесты домена, прикладного слоя и API, включая проверку отсутствия данных
   команды в ответах для жюри;
-- `docker-compose.yml` для запуска обоих сервисов и двух экземпляров PostgreSQL.
+- React 19 + Vite + TypeScript SPA с адаптивной вёрсткой, типизированными API-клиентами
+  и same-origin proxy без изменения CORS в сервисах;
+- `docker-compose.yml` для запуска обоих сервисов, двух экземпляров PostgreSQL
+  и frontend-контейнера с nginx.
 
 ## Соответствие EventStorming
 
@@ -121,6 +130,24 @@
   └────────────────┘                                              └────────────────┘
 ```
 
+Браузер не обращается к API напрямую и не требует CORS. SPA и reverse proxy
+работают на одном origin:
+
+```text
+  Браузер
+     │  http://localhost:3000
+     ▼
+  ┌────────────────────────────────┐
+  │ frontend: nginx + React SPA    │
+  │  /task-api/*   → TaskService   │
+  │  /review-api/* → ReviewService │
+  └────────────────────────────────┘
+```
+
+В dev-режиме ту же роль выполняет Vite proxy (`localhost:5173`), в Docker — nginx
+(`localhost:3000`). Поэтому backend-сервисы не пришлось открывать для cross-origin
+запросов.
+
 Ключевые решения:
 
 1. **Database per service.** У сервисов разные базы (`reviews` и `tasks`), нет общих
@@ -136,6 +163,9 @@
    `IUnitOfWork`; запросы читают те же таблицы через EF Core и возвращают DTO.
 5. **Тонкие контроллеры.** Контроллеры только вызывают `ISender` MediatR; бизнес-логика
    находится в домене и обработчиках команд.
+6. **Same-origin frontend.** SPA обращается только к относительным путям `/task-api`
+   и `/review-api`; проксирование выполняют Vite в dev и nginx в Docker. CORS
+   в .NET-сервисах не включён и не требуется.
 
 ### Слои
 
@@ -145,6 +175,7 @@
 | `*.Application` | Domain, MediatR, FluentValidation | команды, запросы, DTO, интерфейсы репозиториев и внешних сервисов |
 | `*.Infrastructure` | Application, Domain, EF Core, Npgsql | DbContext, конфигурации EF, репозитории, HTTP-клиент TaskService |
 | `*.Api` | Application, Infrastructure, Domain | контроллеры, контракты HTTP, DI, Swagger, обработка ошибок, health checks |
+| `frontend` | React, Vite, TypeScript, nginx | маршрутизация, страницы и формы, типизированные API-клиенты, same-origin proxy |
 
 ## Структура репозитория
 
@@ -164,6 +195,17 @@ src/
     ReviewService.Application/   # команды, запросы, DTO, валидаторы
     ReviewService.Infrastructure/# EF Core, миграции, HTTP-клиент TaskService
     ReviewService.Api/           # контроллеры, Program.cs, Dockerfile
+frontend/
+  src/
+    api/                         # типизированные клиенты TaskService и ReviewService
+    components/                  # layout, модальные окна, drawer-ы, badges, states
+    hooks/                       # сохранение ID жюри в localStorage
+    lib/                         # форматирование дат, статусы, pluralize
+    pages/                       # dashboard, задачи, проверки, очередь, кабинет жюри
+    styles.css                   # дизайн-система и адаптивные брейкпоинты
+  Dockerfile                     # сборка Vite и runtime nginx
+  nginx.conf                     # SPA fallback и прокси /task-api, /review-api
+  vite.config.ts                 # dev-прокси к сервисам на 5101 и 5102
 tests/
   TaskService.Domain.Tests/
   TaskService.Application.Tests/
@@ -187,6 +229,7 @@ docker compose up --build -d
 |---|---|---|
 | `task-service` | http://localhost:5101 | TaskService API, Swagger: `/swagger` |
 | `review-service` | http://localhost:5102 | ReviewService API, Swagger: `/swagger` |
+| `frontend` | http://localhost:3000 | React SPA и прокси `/task-api`, `/review-api` |
 | `task-db` | `localhost:5432` | PostgreSQL для задач, БД `tasks` |
 | `review-db` | `localhost:5433` | PostgreSQL для проверок, БД `reviews` |
 
@@ -195,10 +238,12 @@ docker compose up --build -d
 ```bash
 curl http://localhost:5101/health
 curl http://localhost:5102/health
+curl http://localhost:3000/healthz
 ```
 
 Оба сервиса применяют миграции при старте (`Database__ApplyMigrations=true`).
 Дождитесь статуса `healthy` у контейнеров БД; сервисы запускаются после этого.
+Frontend использует nginx и не требует отдельной сборки на машине.
 
 Остановка и удаление данных:
 
@@ -209,7 +254,8 @@ docker compose down -v       # остановить и удалить тома �
 
 ## Локальный запуск
 
-Требования: .NET SDK 10.0 и PostgreSQL 17 (или Docker для баз).
+Требования: .NET SDK 10.0, PostgreSQL 17 (или Docker для баз) и Node.js 24+
+для frontend.
 
 1. Поднимите базы:
 
@@ -234,7 +280,20 @@ docker compose down -v       # остановить и удалить тома �
    dotnet run --project src/ReviewService/ReviewService.Api
    ```
 
-4. Откройте Swagger:
+4. В третьем терминале запустите frontend:
+
+   ```powershell
+   cd frontend
+   npm ci
+   npm run dev
+   ```
+
+   SPA откроется на http://localhost:5173. Vite проксирует `/task-api` на
+   `http://localhost:5101` и `/review-api` на `http://localhost:5102`; адреса
+   можно переопределить переменными `TASK_API_PROXY_TARGET` и
+   `REVIEW_API_PROXY_TARGET`.
+
+5. Откройте Swagger:
    - http://localhost:5101/swagger
    - http://localhost:5102/swagger
 
@@ -250,10 +309,61 @@ dotnet ef database update `
   --startup-project src/ReviewService/ReviewService.Api
 ```
 
+## Веб-интерфейс
+
+`frontend/` — самостоятельное React-приложение без общих проектов и пакетов
+с .NET-сервисами. Оно собирается Vite и раздаётся nginx. Браузер вызывает API
+только по относительным путям `/task-api` и `/review-api`, поэтому CORS в сервисах
+не требуется.
+
+### Маршруты и возможности
+
+| Маршрут | Роль | Возможности |
+|---|---|---|
+| `/` | обзор | сводные счётчики, последние проверки, быстрые действия |
+| `/tasks` | смотритель | список и фильтры задач, создание черновика, редактирование условия и ответа, публикация |
+| `/reviews` | смотритель | полный список проверок с `TeamId`/`SolutionId`, создание запроса, очередь, назначение, передача старшему |
+| `/queue` | смотритель | приватная очередь без данных команды, назначение конкретному жюри и `assign-next` |
+| `/jury` | жюри | вход по GUID, назначенные проверки, принятие, отказ, завершение с вердиктом |
+
+Сквозной сценарий в UI:
+
+1. Создайте задачу на `/tasks`, заполните условие и правильный ответ, опубликуйте.
+2. На `/reviews` создайте запрос на проверку: ReviewService получит снимок
+   опубликованной задачи. Укажите `SolutionId`, `TaskId`, `TeamId` и ответ участника;
+   для источника `Appeal` добавьте `SourceReferenceId`.
+3. Поставьте запрос в очередь и назначьте его на `/queue` конкретному GUID или
+   командой «Назначить следующую».
+4. На `/jury` введите тот же GUID, примите проверку и завершите её с вердиктом
+   `Correct`/`Incorrect` либо откажитесь с причиной.
+5. После отказа на `/reviews` передайте проверку старшему члену жюри.
+
+### Приватность в UI
+
+- Кабинет жюри использует только `GET /api/reviews/assigned/{juryMemberId}` и
+  `GET /api/reviews/{id}/jury/{juryMemberId}`. Оба возвращают `JuryReviewDto`.
+- В карточке и drawer-е жюри отображаются условие, ответ участника, правильный ответ,
+  статус, вердикт и комментарий. Нет `TeamId`, `SolutionId`, `SourceReferenceId`,
+  названия команды и рейтинга.
+- Административные данные доступны только на `/reviews`, где используется
+  `ReviewRequestDetailsDto`. Это разделение выполнено на уровне DTO и маршрутов,
+  а не скрытием полей на клиенте.
+
+### Ограничения
+
+Аутентификации нет: GUID жюри хранится в `localStorage` (`tournament.juryMemberId`)
+только для удобства демо, а все идентификаторы считаются доверенными. Перед
+production-использованием нужны аутентификация, роли и API gateway.
+
 ## API и сквозной сценарий
 
 Swagger UI: `/swagger`, OpenAPI JSON: `/swagger/v1/swagger.json`.
 Перечисления в JSON сериализуются строками (`Draft`, `Published`, `Correct`, `Incorrect`).
+
+Браузерный клиент обращается к `http://localhost:3000/task-api/*` и
+`http://localhost:3000/review-api/*`; nginx убирает префикс и проксирует запрос
+в соответствующий сервис. Адреса `5101`/`5102` ниже используются для Swagger,
+PowerShell и прямых интеграционных проверок.
 
 ### TaskService (`http://localhost:5101`)
 
@@ -392,6 +502,9 @@ Created ── queue ──▶ Queued ── assign ──▶ Assigned ── ac
   **Нет** команды, решения и рейтинга.
 - `ReviewRequestDetailsDto` — административное представление, содержит `TeamId`,
   `SolutionId` и используется только API смотрителя.
+- SPA кабинета жюри (`frontend/src/pages/JuryPage.tsx`,
+  `frontend/src/components/JuryReviewDrawer.tsx`) вызывает только jury-эндпоинты
+  и не запрашивает административную карточку проверки.
 
 Интеграционный тест `tests/ReviewService.Api.Tests/ReviewsApiTests.cs` проверяет,
 что JSON ответов для жюри не содержит `teamId` и `solutionId`.
@@ -399,8 +512,18 @@ Created ── queue ──▶ Queued ── assign ──▶ Assigned ── ac
 ## Тесты
 
 ```bash
+dotnet build TournamentManagement.sln
 dotnet test TournamentManagement.sln
+
+cd frontend
+npm ci
+npm run build
+npm run lint
 ```
+
+`npm run build` выполняет проверку TypeScript (`tsc -b`) и production-сборку Vite;
+`npm run lint` запускает oxlint. Отдельного набора автотестов у SPA пока нет:
+интерфейс проверяется сборкой, линтером и ручным сквозным сценарием в браузере.
 
 Сейчас в решении **39 тестов**. Покрыты:
 
@@ -417,8 +540,12 @@ dotnet test TournamentManagement.sln
   TaskService с таймаутом и standard resilience handler. Это осознанное упрощение:
   в production-варианте уместны Outbox/Inbox и брокер сообщений, но для учебного
   среза важнее явно показать контракт и отсутствие общей БД.
+- **Same-origin SPA вместо CORS.** Vite dev proxy и nginx в Docker проксируют
+  `/task-api` и `/review-api`, поэтому backend не открывает cross-origin доступ.
+  Это уменьшает поверхность конфигурации и сохраняет прямые контракты сервисов.
 - **Нет аутентификации и авторизации.** Идентификаторы жюри, смотрителя и команды
-  передаются в запросе и считаются доверенными. API предназначен для внутреннего
+  передаются в запросе и считаются доверенными. SPA хранит GUID жюри в
+  `localStorage` только для удобства демо. API предназначен для внутреннего
   контура; перед публикацией нужен API gateway и проверка ролей.
 - **Нет публичного API участника.** Агрегаты «Команда», «Итоги турнира» и рейтинг
   не реализованы, поэтому требование «участник видит результаты своей команды»

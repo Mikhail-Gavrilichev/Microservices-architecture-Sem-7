@@ -1,6 +1,10 @@
 **/bin/
 **/obj/
 **/TestResults/
+**/node_modules/
+**/dist/
+**/.env
+**/.env.*
 **/.vs/
 **/.vscode/
 **/.idea/

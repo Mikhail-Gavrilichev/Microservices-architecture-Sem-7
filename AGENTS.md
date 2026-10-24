@@ -15,6 +15,8 @@
 
 Стек: **.NET 10 / ASP.NET Core 10**, C# 13, MediatR 12, FluentValidation 12,
 EF Core 10 + Npgsql, PostgreSQL, Swagger (Swashbuckle), xUnit, Docker Compose.
+Пользовательский интерфейс: **React 19 + Vite 8 + TypeScript 6 + React Router 7**,
+в Docker раздаётся через **nginx**.
 
 ## 2. Границы задачи
 
@@ -22,6 +24,7 @@ EF Core 10 + Npgsql, PostgreSQL, Swagger (Swashbuckle), xUnit, Docker Compose.
 
 - домен, приложение, инфраструктура и API двух перечисленных агрегатов;
 - интеграция ReviewService → TaskService для получения снимка опубликованной задачи;
+- React SPA для сквозного сценария: задачи, проверки, очередь, кабинет жюри;
 - миграции EF Core, Docker Compose, тесты, документация.
 
 ### Не входит в scope
@@ -48,6 +51,17 @@ src/ReviewService/
   ReviewService.Application/     # команды, запросы, DTO, валидаторы, интерфейсы
   ReviewService.Infrastructure/  # ReviewDbContext, EF, TaskCatalogClient, миграции
   ReviewService.Api/             # контроллеры, контракты, Program.cs, Dockerfile
+
+frontend/
+  src/api/                       # типизированные клиенты и типы HTTP-контрактов
+  src/components/                # layout, модальные окна, drawer-ы, общие состояния
+  src/hooks/                     # useJuryId и localStorage
+  src/lib/                       # форматирование, статусы, pluralize
+  src/pages/                     # dashboard, tasks, reviews, queue, jury, 404
+  src/styles.css                 # дизайн-система и адаптивность
+  Dockerfile                     # Vite build + nginx runtime
+  nginx.conf                     # SPA fallback и same-origin proxy
+  vite.config.ts                 # dev-прокси к TaskService и ReviewService
 
 tests/
   <Service>.Domain.Tests/
@@ -93,6 +107,24 @@ Domain ← Application ← Infrastructure
 - HTTP-контракты (`*Request`) живут в `*.Api/Contracts` и не переиспользуются
   в Application.
 - Не добавляйте в домен свойства «на будущее», если они не нужны текущим инвариантам.
+
+### 4.4. Frontend
+
+- `frontend/` не ссылается на .NET-проекты и не делит с ними код; связь только
+  через HTTP-контракты.
+- Браузер использует относительные `/task-api` и `/review-api`. В dev их проксирует
+  Vite, в Docker — nginx. Не включайте permissive CORS в сервисах ради UI.
+- Все запросы идут через типизированные клиенты `frontend/src/api`; не добавляйте
+  разрозненные `fetch` в страницах и компонентах.
+- Кабинет жюри (`JuryPage`, `JuryReviewDrawer`) использует только jury-эндпоинты
+  и `JuryReviewDto`. Административные данные отображаются только в `/reviews`.
+- `Modal` и `Drawer` рендерятся через `createPortal` в `document.body`: страницы
+  используют анимации/transform, создающие stacking context. Не заменяйте портал
+  на обычный `position: fixed` внутри страницы.
+- Изменения черновика задачи отправляются последовательно: каждый PUT загружает
+  и сохраняет весь агрегат, параллельные запросы могут перезаписать друг друга.
+- Аутентификации нет; ID жюри хранится в `localStorage` только для демо и считается
+  доверенным. Не добавляйте «наполовину» auth без отдельного согласования.
 
 ## 5. Доменные инварианты
 
@@ -145,6 +177,9 @@ Domain ← Application ← Infrastructure
 - Не «прячьте» поля через `[JsonIgnore]` в общем DTO. Разделяйте DTO по сценариям.
 - Не добавляйте team-данные в логи, метрики, трассировки и тексты ошибок для
   jury-эндпоинтов.
+- Во frontend не расширяйте `JuryReviewDto` и не запрашивайте административные
+  эндпоинты из `JuryPage`/`JuryReviewDrawer`; данные команды не должны попадать
+  даже в props jury-компонентов.
 - Тест `tests/ReviewService.Api.Tests/ReviewsApiTests.cs` проверяет отсутствие
   `teamId`/`solutionId` в JSON. Его нельзя удалять или ослаблять.
 
@@ -202,7 +237,10 @@ Domain ← Application ← Infrastructure
 - Новый HTTP-контракт — тестом в `*.Api.Tests` через `WebApplicationFactory`.
 - Тесты не должны зависеть от реального PostgreSQL, сети или порядка запуска.
 - Запрещено удалять/пропускать существующие тесты ради «зелёного» прогона.
-- Минимальный набор перед сдачей: `dotnet test TournamentManagement.sln`.
+- Для frontend минимальная проверка — `npm run build` и `npm run lint`; ручной
+  smoke-тест обязателен для изменений приватности и jury-сценариев.
+- Минимальный набор перед сдачей: `dotnet test TournamentManagement.sln`,
+  `npm run build`, `npm run lint`.
 
 ## 11. Команды
 
@@ -216,6 +254,15 @@ dotnet test TournamentManagement.sln
 # запуск сервисов локально
 dotnet run --project src/TaskService/TaskService.Api
 dotnet run --project src/ReviewService/ReviewService.Api
+
+# frontend: dev с прокси на 5101/5102
+cd frontend
+npm ci
+npm run dev
+
+# frontend: проверка перед коммитом
+npm run build
+npm run lint
 
 # миграции
 dotnet ef migrations add <Name> \
@@ -233,8 +280,9 @@ docker compose down
 docker compose down -v
 ```
 
-Порты: TaskService — `5101`, ReviewService — `5102`, task-db — `5432`,
-review-db — `5433`. Внутри Docker сервисы слушают `8080`.
+Порты: frontend — `3000` (Docker) и `5173` (Vite dev), TaskService — `5101`,
+ReviewService — `5102`, task-db — `5432`, review-db — `5433`. Внутри Docker
+frontend слушает `80`, сервисы — `8080`.
 
 ## 12. Definition of Done
 
@@ -242,11 +290,13 @@ review-db — `5433`. Внутри Docker сервисы слушают `8080`.
 
 - [ ] `dotnet build TournamentManagement.sln` завершается без ошибок;
 - [ ] `dotnet test TournamentManagement.sln` — все тесты проходят;
+- [ ] `npm run build` и `npm run lint` в `frontend/` проходят без ошибок;
 - [ ] новые бизнес-правила покрыты тестами;
-- [ ] приватность jury-DTO не нарушена;
+- [ ] приватность jury-DTO не нарушена, включая frontend-компоненты;
 - [ ] миграция создана, если менялась схема;
 - [ ] обновлены README (API/поведение) и, при необходимости, этот файл;
-- [ ] `docker compose up --build -d` поднимает оба сервиса, `/health` отвечает `Healthy`;
+- [ ] `docker compose up --build -d` поднимает оба сервиса и frontend,
+      `/health` и `/healthz` отвечают `Healthy`/`ok`;
 - [ ] в ответе пользователю перечислены изменённые файлы и команды проверки.
 
 ## 13. Чего делать нельзя
@@ -254,6 +304,9 @@ review-db — `5433`. Внутри Docker сервисы слушают `8080`.
 - Реализовывать агрегаты вне scope или добавлять им таблицы/эндпоинты.
 - Связывать сервисы общей БД, общими проектами, общими доменными классами.
 - Добавлять в `JuryReviewDto`/`ReviewQueueItemDto` данные команды, решения или рейтинг.
+- Включать permissive CORS в сервисах ради frontend: используйте same-origin proxy.
+- Запрашивать административные эндпоинты проверки из кабинета жюри или передавать
+  team-данные в props jury-компонентов.
 - Вызывать TaskService из обработчиков accept/refuse/complete: снимок уже сохранён.
 - Возвращать доменные агрегаты из API или репозиториев.
 - Делать `SaveChanges` в контроллере, репозитории или валидаторе.

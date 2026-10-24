@@ -74,6 +74,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: tournament-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      task-service:
+        condition: service_started
+      review-service:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   task-db-data:
   review-db-data:
