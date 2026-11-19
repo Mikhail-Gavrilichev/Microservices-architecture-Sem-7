@@ -11,20 +11,7 @@ public class BusinessException(int code, string message) : Exception(message)
     public int Code { get; } = code;
 }
 
-// Демонстрационный серверный каталог: никакой общей БД с сервисом подготовки форм.
-// В реальной интеграции эти данные поступали бы из доверенного API подготовки форм.
-public static class TaskCatalog
-{
-    public record Entry(int GameId, int FormId, int TaskId, string Condition, string CorrectAnswer);
-    public static readonly Entry[] Items =
-    [
-        new(1, 101, 1, "Назовите столицу Франции.", "Париж"),
-        new(1, 102, 2, "Сколько будет 7 × 8?", "56"),
-        new(1, 103, 3, "Какой химический символ у воды?", "H₂O")
-    ];
-}
-
-public class CheckingWorkflow(AppDbContext db, IWebHostEnvironment environment)
+public class CheckingWorkflow(AppDbContext db, IWebHostEnvironment environment, HttpClient forms)
 {
     private static BusinessException Bad(string message) => new(400, message);
     private static BusinessException Missing(string name) => new(404, $"{name} не найден(а).");
@@ -45,24 +32,44 @@ public class CheckingWorkflow(AppDbContext db, IWebHostEnvironment environment)
         s.PhotoFormId, s.TaskCondition, s.Status, s.CreatedAt
     };
 
-    // Умышленно без TeamId / названия команды / рейтинга — используется ВСЕМИ маршрутами жюри.
+
     public static object JudgeView(CheckRequest c) => new
     {
         c.Id, c.SubmissionId, c.JudgeId, c.Status, c.CreatedAt, c.AssignedAt, c.CompletedAt,
-        c.Submission.GameId, c.Submission.FormId, c.Submission.TaskId,
+        TeamId = c.Submission.GameName == null ? null : c.Submission.TeamId, c.Submission.GameName, c.Submission.GameId, c.Submission.FormId, c.Submission.TaskId,
         c.Submission.TaskCondition, c.Submission.Answer, c.Submission.CorrectAnswer,
         PhotoUrl = c.Submission.PhotoPath == null ? null : $"/api/checks/{c.Id}/photo"
     };
+
+    public record IssuedForm(int FormId, int GameId, string GameName, string TeamId, int TaskId, string Condition);
+    private record TaskReference(string CorrectAnswer, string Condition);
+
+    private async Task<T> ReadFormsApi<T>(string path) where T : class
+    {
+        try
+        {
+            return await forms.GetFromJsonAsync<T>(path) ?? throw new BusinessException(502, "Пустой ответ сервиса форм.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        { throw new BusinessException(502, "Не удалось получить данные из сервиса форм."); }
+    }
+
+    public Task<IssuedForm[]> IssuedForms(int? id = null) =>
+        ReadFormsApi<IssuedForm[]>(id.HasValue ? $"/api/forms/issued?formId={id}" : "/api/forms/issued");
 
     public async Task<Submission> Submit(SubmitRequest input)
     {
         if (string.IsNullOrWhiteSpace(input.TeamId) || string.IsNullOrWhiteSpace(input.Answer))
             throw Bad("TeamId и ответ обязательны.");
-        var task = TaskCatalog.Items.FirstOrDefault(x => x.GameId == input.GameId && x.FormId == input.FormId && x.TaskId == input.TaskId)
-            ?? throw Bad("Комбинация GameId, FormId и TaskId отсутствует в серверном каталоге форм.");
+        var form = (await IssuedForms(input.FormId)).SingleOrDefault();
+        if (form == null || form.GameId != input.GameId || form.TaskId != input.TaskId || form.TeamId != input.TeamId.Trim())
+            throw Bad("Форма не выдана указанной команде, игре или задаче.");
+        if (await db.Submissions.AnyAsync(s => s.FormId == input.FormId && s.GameName != null))
+            throw Conflict("Решение по этой форме уже создано. Используйте существующее решение.");
+        var task = await ReadFormsApi<TaskReference>($"/api/tasks/{form.TaskId}");
         var submission = new Submission
         {
-            TeamId = input.TeamId.Trim(), GameId = input.GameId, FormId = input.FormId, TaskId = input.TaskId,
+            TeamId = form.TeamId, GameName = form.GameName, GameId = form.GameId, FormId = input.FormId, TaskId = input.TaskId,
             Answer = input.Answer.Trim(), TaskCondition = task.Condition, CorrectAnswer = task.CorrectAnswer
         };
         db.Submissions.Add(submission);
@@ -213,13 +220,11 @@ public class CheckingWorkflow(AppDbContext db, IWebHostEnvironment environment)
             .Select(c => c.JudgeId!.Value).ToListAsync()).ToHashSet();
         var waiting = await db.CheckRequests.Where(c => c.Status == CheckStatus.Queued ||
             (c.Status == CheckStatus.Escalated && c.JudgeId == null))
-            .OrderBy(c => c.Status == CheckStatus.Escalated ? 0 : 1).ThenBy(c => c.CreatedAt).ToListAsync();
+            .OrderBy(c => c.Status == CheckStatus.Escalated ? 0 : 1).ThenBy(c => c.CreatedAt).ThenBy(c => c.Id).ToListAsync();
         foreach (var check in waiting)
         {
-            var judge = check.Status == CheckStatus.Escalated
-                ? judges.FirstOrDefault(j => j.Role == JudgeRole.SeniorJudge && !busy.Contains(j.Id))
-                : judges.FirstOrDefault(j => j.Role == JudgeRole.Judge && !busy.Contains(j.Id))
-                    ?? judges.FirstOrDefault(j => j.Role == JudgeRole.SeniorJudge && !busy.Contains(j.Id));
+            var role = check.Status == CheckStatus.Escalated ? JudgeRole.SeniorJudge : JudgeRole.Judge;
+            var judge = judges.FirstOrDefault(j => j.Role == role && !busy.Contains(j.Id));
             if (judge == null) continue;
             check.JudgeId = judge.Id;
             check.AssignedAt = DateTime.UtcNow;
@@ -233,6 +238,7 @@ public class CheckingWorkflow(AppDbContext db, IWebHostEnvironment environment)
     {
         var judge = await db.Judges.FindAsync(id) ?? throw Missing("Член жюри");
         if (!judge.IsAvailable) throw Conflict("Член жюри недоступен.");
+        if (!seniorOnly && judge.Role != JudgeRole.Judge) throw Conflict("Первичная проверка назначается только обычному жюри.");
         if (seniorOnly && judge.Role != JudgeRole.SeniorJudge) throw Conflict("Переданную работу может принять только старший член жюри.");
         if (await db.CheckRequests.AnyAsync(c => c.JudgeId == id &&
             (c.Status == CheckStatus.Assigned || c.Status == CheckStatus.Accepted || c.Status == CheckStatus.Escalated)))

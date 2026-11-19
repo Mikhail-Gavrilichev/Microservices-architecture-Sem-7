@@ -1,0 +1,100 @@
+name: microservices-sem7
+
+# Единый Compose всего проекта.
+# Запуск: docker compose up --build
+#
+#   GameForms  (подготовка игр и форм)  frontend http://localhost:8081  backend http://localhost:8080
+#   Checking   (проверка работ жюри)    frontend http://localhost:8091  backend http://localhost:8090
+#
+# Каждый микросервис по-прежнему использует свою собственную базу PostgreSQL
+# и свои Dockerfile.
+services:
+  # ---------------------------------------------------------------- GameForms
+  gameforms-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gameforms
+      POSTGRES_USER: gameforms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gameforms_dev_password}
+    volumes:
+      - gameforms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameforms -d gameforms"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  gameforms-backend:
+    build:
+      context: ./gameforms-service
+      dockerfile: GameFormsService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: "Host=gameforms-db;Port=5432;Database=gameforms;Username=gameforms;Password=${POSTGRES_PASSWORD:-gameforms_dev_password}"
+    ports:
+      - "8080:8080"
+    depends_on:
+      gameforms-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gameforms-frontend:
+    build:
+      context: ./gameforms-service
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8081:80"
+    depends_on:
+      gameforms-backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- Checking
+  checking-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: checking_db
+      POSTGRES_USER: checking_user
+      POSTGRES_PASSWORD: ${CHECKING_DB_PASSWORD:-checking_dev_password}
+    volumes:
+      - checking_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U checking_user -d checking_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  checking-backend:
+    build:
+      context: ./checking-service
+      dockerfile: CheckingService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      GameFormsUrl: ${GAMEFORMS_URL:-http://gameforms-backend:8080}
+      ConnectionStrings__Default: "Host=checking-db;Port=5432;Database=checking_db;Username=checking_user;Password=${CHECKING_DB_PASSWORD:-checking_dev_password}"
+    volumes:
+      - checking_photos:/app/photos
+    ports:
+      - "8090:8080"
+    depends_on:
+      checking-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  checking-frontend:
+    build:
+      context: ./checking-service
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8091:80"
+    depends_on:
+      checking-backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  gameforms_postgres_data:
+  checking_postgres_data:
+  checking_photos:

@@ -37,8 +37,8 @@ function render() {
   $('#tasksList').innerHTML = filtered.length ? filtered.map(taskCard).join('') : empty('Задач пока нет', 'Создайте задачу и заполните условие и ответ.');
   $('#setsList').innerHTML = state.sets.length ? state.sets.map(setCard).join('') : empty('Комплектов пока нет', 'Опубликуйте игру и создайте комплекты для команд.');
   $('#taskForm').elements.gameId.innerHTML = optionGames(state.games);
-  $('#setsForm').elements.gameId.innerHTML = optionGames(state.games.filter(g => g.status === 'Published' && !state.sets.some(s => s.gameId === g.id)));
-}
+  $('#setsForm').elements.gameId.innerHTML = optionGames(state.games.filter(g => g.status === 'Published')
+);}
 function empty(title, subtitle) { return `<div class="empty"><div style="font-size:27px">▦</div><strong>${title}</strong><span>${subtitle}</span></div>`; }
 function gameCard(g) {
   const open = state.selectedGame === g.id;

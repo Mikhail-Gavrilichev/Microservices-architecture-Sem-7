@@ -10,6 +10,7 @@ public class Submission
 {
     public int Id { get; set; }
     [MaxLength(100)] public string TeamId { get; set; } = "";
+    [MaxLength(200)] public string? GameName { get; set; }
     public int GameId { get; set; }
     public int FormId { get; set; }
     public int TaskId { get; set; }

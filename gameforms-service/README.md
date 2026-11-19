@@ -6,7 +6,6 @@
 
 ```text
 .
-├── docker-compose.yml                 # backend, frontend, PostgreSQL + volume
 ├── GameFormsService/
 │   ├── GameFormsService.csproj
 │   ├── Program.cs                     # DI, Swagger, ошибки, миграции, health
@@ -30,19 +29,21 @@
 
 ## Запуск
 
-Нужны Docker и Docker Compose. Из корня проекта:
+Нужны Docker и Docker Compose. Запуск всего проекта (оба микросервиса) — **из корня репозитория**:
 
 ```bash
 docker compose up --build
 ```
 
+В едином `docker-compose.yml` этот сервис представлен контейнерами `gameforms-db`, `gameforms-backend`, `gameforms-frontend`. Backend, API и Dockerfile не изменялись; во `frontend/nginx.conf` изменилась только строка `proxy_pass` — теперь она указывает на `gameforms-backend:8080`.
+
 * **Frontend:** http://localhost:8081
 * **Swagger:** http://localhost:8081/swagger (также http://localhost:8080/swagger)
 * **Проверка backend:** http://localhost:8080/api/health
 
-При первом запуске backend автоматически применяет включённую EF Core-миграцию. Compose ожидает успешного healthcheck PostgreSQL до старта backend; в этом демо запускается **один** экземпляр backend. PostgreSQL хранит данные в именованном volume `postgres_data` между перезапусками. Чтобы удалить данные: `docker compose down -v`. Чтобы остановить без удаления данных: `docker compose down`.
+При первом запуске backend автоматически применяет включённую EF Core-миграцию. Compose ожидает успешного healthcheck PostgreSQL до старта backend; в этом демо запускается **один** экземпляр backend. PostgreSQL хранит данные в именованном volume `gameforms_postgres_data` между перезапусками. Чтобы удалить данные: `docker compose down -v`. Чтобы остановить без удаления данных: `docker compose down`.
 
-Пароль локальной БД по умолчанию `gameforms_dev_password`; при необходимости задайте переменную окружения `POSTGRES_PASSWORD` **до первого запуска**. При уже созданном volume пароль изменением переменной не обновится. Порт PostgreSQL наружу не опубликован; backend подключается по `Host=db`, а не через localhost. Для боевой среды настройте секреты и сетевые ограничения отдельно.
+Пароль локальной БД по умолчанию `gameforms_dev_password`; при необходимости задайте переменную окружения `POSTGRES_PASSWORD` **до первого запуска**. При уже созданном volume пароль изменением переменной не обновится. Порт PostgreSQL наружу не опубликован; backend подключается по `Host=gameforms-db`, а не через localhost. Для боевой среды настройте секреты и сетевые ограничения отдельно.
 
 ## Проверка основного процесса
 

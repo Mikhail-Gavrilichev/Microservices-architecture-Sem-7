@@ -48,8 +48,8 @@ public class SubmissionsController(AppDbContext db, CheckingWorkflow workflow) :
 
 [ApiController]
 [Route("api/catalog")]
-public class CatalogController : ControllerBase
+public class CatalogController(CheckingWorkflow workflow) : ControllerBase
 {
     [HttpGet("forms")]
-    public IActionResult Forms() => Ok(TaskCatalog.Items.Select(x => new { x.GameId, x.FormId, x.TaskId, x.Condition }));
+    public async Task<IActionResult> Forms() => Ok(await workflow.IssuedForms());
 }

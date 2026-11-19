@@ -16,6 +16,8 @@ public class AppDbContextModelSnapshot : ModelSnapshot
         {
             b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("integer").UseIdentityByDefaultColumn();
             b.Property<string>("TeamId").IsRequired().HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<string>("GameName").HasMaxLength(200).HasColumnType("character varying(200)");
+            b.HasIndex(x => x.FormId).IsUnique().HasFilter("\"GameName\" IS NOT NULL");
             b.Property<int>("GameId").HasColumnType("integer");
             b.Property<int>("FormId").HasColumnType("integer");
             b.Property<int>("TaskId").HasColumnType("integer");

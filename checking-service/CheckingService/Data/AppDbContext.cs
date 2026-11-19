@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Submission>().HasIndex(x => x.FormId).IsUnique().HasFilter("\"GameName\" IS NOT NULL");
         modelBuilder.Entity<Submission>().Property(x => x.Status).HasConversion<string>().HasMaxLength(30);
         modelBuilder.Entity<CheckRequest>().Property(x => x.Status).HasConversion<string>().HasMaxLength(30);
         modelBuilder.Entity<Judge>().Property(x => x.Role).HasConversion<string>().HasMaxLength(30);

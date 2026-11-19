@@ -17,6 +17,18 @@ public class FormsController(AppDbContext db, WorkflowService workflow) : Contro
         return CreatedAtAction(nameof(Get), new { id = form.Id }, new { form.Id, form.FormSetId, form.TaskId, form.Status, form.CreatedAt });
     }
 
+    // Справочник выданных бланков, без данных участников и эталонных ответов.
+    [HttpGet("issued")]
+    public async Task<IActionResult> Issued([FromQuery] int? formId)
+    {
+        var forms = db.Forms.Where(f => f.FormSet.Status == FormSetStatus.Issued);
+        if (formId.HasValue) forms = forms.Where(f => f.Id == formId.Value);
+        return Ok(await forms.OrderBy(f => f.Id).Select(f => new {
+            FormId = f.Id, f.TaskId, f.FormSet.GameId, GameName = f.FormSet.Game.Name,
+            f.FormSet.TeamId, f.Task.Condition
+        }).ToListAsync());
+    }
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int? formSetId)
     {

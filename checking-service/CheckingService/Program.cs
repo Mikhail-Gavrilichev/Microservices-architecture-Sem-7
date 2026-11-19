@@ -8,7 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 var connection = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Укажите ConnectionStrings__Default.");
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection));
-builder.Services.AddScoped<CheckingWorkflow>();
+builder.Services.AddHttpClient<CheckingWorkflow>(client => client.BaseAddress =
+    new Uri(builder.Configuration["GameFormsUrl"] ?? "http://localhost:8080"));
 builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
