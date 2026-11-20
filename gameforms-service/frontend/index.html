@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Листок — подготовка игровых форм</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">Л</span><span>листок<small>ИГРОВЫЕ МАТЕРИАЛЫ</small></span></div>
+      <div class="side-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <nav aria-label="Разделы">
+        <button class="nav-item active" data-tab="games"><span class="nav-icon">▦</span> Игры <span class="nav-count" id="gamesCount">0</span></button>
+        <button class="nav-item" data-tab="tasks"><span class="nav-icon">☷</span> Задачи <span class="nav-count" id="tasksCount">0</span></button>
+        <button class="nav-item" data-tab="sets"><span class="nav-icon">▤</span> Комплекты форм <span class="nav-count" id="setsCount">0</span></button>
+      </nav>
+      <div class="sidebar-bottom"><span class="online-dot"></span> Система подготовки<br><small>Простой путь от игры до выдачи</small></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar"><div class="breadcrumb">ПОДГОТОВКА ИГРЫ <span>/</span> <strong id="breadcrumb">Игры</strong></div><a href="/swagger" target="_blank" rel="noopener">Документация API ↗</a></header>
+      <div class="content">
+        <section id="gamesPage" class="page active">
+          <div class="page-heading"><div><div class="eyebrow">01 / НАЧАЛО РАБОТЫ</div><h1>Игры</h1><p>Создавайте игры и задавайте правила перед публикацией.</p></div><button class="primary" data-open="gameDialog">＋ Новая игра</button></div>
+          <div class="overview"><div><span class="stat-label">ВСЕГО ИГР</span><strong id="statGames">0</strong></div><div><span class="stat-label">ОПУБЛИКОВАНО</span><strong id="statPublished">0</strong></div><div><span class="stat-label">ЗАДАЧ ПОДГОТОВЛЕНО</span><strong id="statTasks">0</strong></div></div>
+          <div class="section-title"><h2>Список игр</h2><span id="gamesTotal" class="muted"></span></div>
+          <div id="gamesList" class="card-list"></div>
+        </section>
+
+        <section id="tasksPage" class="page">
+          <div class="page-heading"><div><div class="eyebrow">02 / СОДЕРЖАНИЕ</div><h1>Задачи</h1><p>Подготовьте условия и ответы, затем опубликуйте задачи.</p></div><button class="primary" data-open="taskDialog">＋ Новая задача</button></div>
+          <div class="toolbar"><label>Игра <select id="taskFilter"><option value="">Все игры</option></select></label><span class="muted" id="tasksTotal"></span></div>
+          <div id="tasksList" class="card-list"></div>
+        </section>
+
+        <section id="setsPage" class="page">
+          <div class="page-heading"><div><div class="eyebrow">03 / ДЛЯ КОМАНД</div><h1>Комплекты форм</h1><p>Один комплект для каждой команды. Добавьте задачи, подготовьте, напечатайте и выдайте.</p></div><button class="primary" data-open="setsDialog">＋ Создать комплекты</button></div>
+          <div class="hint"><span>ⓘ</span> Укажите все TeamId сразу: список команд фиксируется при создании комплектов для игры.</div>
+          <div id="setsList" class="card-list"></div>
+        </section>
+      </div>
+      <footer>ЛИСТОК <span>·</span> Подготовка игровых материалов</footer>
+    </main>
+  </div>
+
+  <dialog id="gameDialog"><form id="gameForm"><div class="dialog-head"><div><span class="eyebrow">НОВАЯ ЗАПИСЬ</span><h2>Создать игру</h2></div><button type="button" class="close" data-close aria-label="Закрыть">×</button></div><label>Название игры <input name="name" maxlength="200" required placeholder="Например, Весенний квиз"></label><label>Описание <textarea name="description" rows="3" placeholder="Кратко о вашей игре"></textarea></label><div class="dialog-actions"><button type="button" class="secondary" data-close>Отмена</button><button class="primary">Создать игру</button></div></form></dialog>
+
+  <dialog id="taskDialog"><form id="taskForm"><div class="dialog-head"><div><span class="eyebrow" id="taskDialogEyebrow">НОВАЯ ЗАПИСЬ</span><h2 id="taskDialogTitle">Новая задача</h2></div><button type="button" class="close" data-close aria-label="Закрыть">×</button></div><input type="hidden" name="id"><label>Игра <select name="gameId" required></select></label><label>Название задачи <input name="title" maxlength="200" required placeholder="Например, Вопрос №1"></label><label>Условие <textarea name="condition" rows="4" placeholder="Опишите задание"></textarea></label><label>Правильный ответ <textarea name="correctAnswer" rows="2" placeholder="Ответ для проверки"></textarea></label><label>Баллы <input name="points" type="number" min="1" max="10000" value="1" required></label><div class="dialog-actions"><button type="button" class="secondary" data-close>Отмена</button><button class="primary">Сохранить задачу</button></div></form></dialog>
+
+  <dialog id="setsDialog"><form id="setsForm"><div class="dialog-head"><div><span class="eyebrow">КОМАНДЫ</span><h2>Создать комплекты</h2></div><button type="button" class="close" data-close aria-label="Закрыть">×</button></div><label>Опубликованная игра <select name="gameId" required></select></label><label>TeamId команд <textarea name="teams" rows="5" required placeholder="team-01&#10;team-02&#10;team-03"></textarea><small>По одному ID на строку или через запятую. Для каждой команды будет создан один комплект.</small></label><div class="dialog-actions"><button type="button" class="secondary" data-close>Отмена</button><button class="primary">Создать комплекты</button></div></form></dialog>
+
+  <dialog id="textDialog"><form id="textForm"><div class="dialog-head"><div><span class="eyebrow">НАСТРОЙКА</span><h2 id="textDialogTitle">Правила</h2></div><button type="button" class="close" data-close aria-label="Закрыть">×</button></div><textarea name="value" rows="7" placeholder="Введите текст"></textarea><div class="dialog-actions"><button type="button" class="secondary" data-close>Отмена</button><button class="primary">Сохранить</button></div></form></dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

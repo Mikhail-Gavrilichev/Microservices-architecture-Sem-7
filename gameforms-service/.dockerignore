@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+*.zip
+**/bin
+**/obj
+.env
+src
+public
+package.json
+package-lock.json
+next.config.ts
+tsconfig.json
+*.mjs
